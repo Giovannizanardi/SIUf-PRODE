@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Esportatore Excel & Gestione SIUF Studenti</title>
+    <!-- Tailwind CSS per il design moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome per le icone premium -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Libreria SheetJS per la generazione reale dei file Excel (.xlsx) nel browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Gestione nativa della visibilità di stampa per evitare conflitti con classi utility */
+        #print-section {
+            display: none;
+        }
+
+        /* Layout dell'anteprima foglio A4 Orizzontale a schermo (per il registro) */
+        #print-section.show-preview {
+            display: block !important;
+            background-color: #0f172a; /* Sfondo scuro per far risaltare il foglio */
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        #print-section .paper-sheet {
+            background: white;
+            max-width: 100%;
+            width: 297mm; /* Dimensioni reali A4 landscape */
+            min-height: 210mm;
+            padding: 1.5cm;
+            margin: 0 auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            box-sizing: border-box;
+        }
+
+        /* Layout dell'anteprima foglio A4 Verticale (per la Sintesi Didattica) */
+        #print-section.show-preview-portrait {
+            display: block !important;
+            background-color: #0f172a;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+
+        #print-section .paper-sheet-portrait {
+            background: white;
+            max-width: 100%;
+            width: 210mm; /* Dimensioni reali A4 portrait */
+            min-height: 297mm;
+            padding: 2cm;
+            margin: 0 auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            box-sizing: border-box;
+        }
+
+        /* Regole specifiche per la stampa fisica reale */
+        @media print {
+            body {
+                background: white !important;
+                color: black !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            /* Nasconde l'intera interfaccia interattiva di lavoro */
+            #interactive-app {
+                display: none !important;
+            }
+            /* Mostra solo la sezione dedicata alla stampa */
+            #print-section {
+                display: block !important;
+                background: transparent !important;
+                padding: 0 !important;
+            }
+            #print-section .paper-sheet, #print-section .paper-sheet-portrait {
+                width: 100% !important;
+                min-height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+            }
+            /* Nasconde i controlli di navigazione durante la stampa fisica */
+            .no-print {
+                display: none !important;
+            }
+            @page {
+                margin: 1.2cm;
+            }
+            /* Evita interruzioni di pagina all'interno delle righe della tabella */
+            tr {
+                page-break-inside: avoid !important;
+            }
+            .page-break {
+                page-break-before: always !important;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <!-- NOTIFICA DI FEEDBACK CUSTOM -->
+    <div id="toast-notification" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-5 py-3.5 rounded-xl shadow-xl flex items-center gap-3">
+        <div id="toast-icon-box" class="w-7 h-7 rounded-lg flex items-center justify-center">
+            <i id="toast-icon" class="fa-solid"></i>
+        </div>
+        <p id="toast-message" class="text-sm font-medium"></p>
+    </div>
+
+    <!-- SEZIONE INTERATTIVA (Nascosta durante la stampa) -->
+    <div id="interactive-app" class="max-w-7xl mx-auto px-4 py-8">
+        
+        <!-- Header con Logo e Titolo -->
+        <header class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 text-2xl shadow-sm">
+                    <i class="fa-solid fa-file-excel"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Esportatore & Reportistica SIUF</h1>
+                    <p class="text-sm text-slate-500">Gestione griglie d'esame, calcoli automatici, filtri intelligenti e stampe orizzontali ad una pagina</p>
+                </div>
+            </div>
+            
+            <!-- Azioni Principali -->
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Bottone Stampa Report -->
+                <button onclick="printReport()" class="bg-slate-700 hover:bg-slate-800 text-white font-semibold px-5 py-3 rounded-xl shadow-md shadow-slate-700/10 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-print text-base"></i>
+                    <span>Stampa Registro (Landscape)</span>
+                </button>
+
+                <!-- Bottone di Download Principale -->
+                <button id="download-btn" onclick="downloadExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-3 rounded-xl shadow-md shadow-emerald-600/10 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-down text-base"></i>
+                    <span id="download-btn-text">Scarica File Excel (.xlsx)</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Sezione Drag & Drop e Upload File SIUF -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Zona Caricamento Dropzone -->
+            <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900 mb-2">
+                        <i class="fa-solid fa-file-import text-emerald-500 mr-2"></i>Caricamento file CSV da gestionale SIUF
+                    </h3>
+                    <p class="text-sm text-slate-500 mb-4">Trascina o seleziona uno o più file CSV esportati dal sistema SIUF per importarli all'istante.</p>
+                </div>
+                
+                <div id="drop-zone" class="border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-slate-50/50 hover:bg-emerald-50/20 transition-all rounded-xl p-8 text-center cursor-pointer flex flex-col items-center justify-center" onclick="document.getElementById('csv-file-input').click()">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-400 mb-3" id="upload-icon"></i>
+                    <p class="text-sm font-semibold text-slate-700">Trascina qui i tuoi CSV SIUF o <span class="text-emerald-600 underline">sfoglia i file</span></p>
+                    <p class="text-xs text-slate-400 mt-1">I file verranno aggiunti come nuovi gruppi di studenti</p>
+                    <input type="file" id="csv-file-input" class="hidden" accept=".csv" multiple onchange="handleFileSelect(event)">
+                </div>
+            </div>
+
+            <!-- Elenco dei Documenti Attualmente Caricati -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-base font-bold text-slate-900 mb-2">
+                        <i class="fa-solid fa-folder-open text-amber-500 mr-2"></i>Classi & Sorgenti Caricate (<span id="source-count">0</span>)
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-4">Personalizza qui sotto il nome di ciascun gruppo (es. 4A, 4B) per visualizzarlo nei file di uscita.</p>
+                </div>
+                
+                <div id="sources-list" class="space-y-3 max-h-56 overflow-y-auto custom-scrollbar pr-1 mb-2">
+                    <!-- Popolato dinamicamente da JS -->
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 flex justify-between items-center">
+                    <button onclick="resetToDefaults()" class="text-xs text-slate-500 hover:text-emerald-600 font-semibold transition-all">
+                        <i class="fa-solid fa-arrow-rotate-left mr-1"></i>Carica file di esempio
+                    </button>
+                    <button onclick="clearAllSources()" class="text-xs text-rose-600 hover:text-rose-800 font-semibold transition-all">
+                        <i class="fa-solid fa-trash-can mr-1"></i>Svuota tutto
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sezione Analisi Andamento Prove d'Esame -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-5">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-emerald-500"></i>
+                        Andamento delle Prove d'Esame
+                    </h3>
+                    <p class="text-sm text-slate-500 mt-0.5">Seleziona una prova per analizzare graficamente il rendimento didattico e la distribuzione dei voti</p>
+                </div>
+                <!-- Pulsanti per selezionare l'andamento della specifica prova -->
+                <div class="flex flex-wrap items-center gap-2" id="exam-metric-selector">
+                    <button onclick="switchActiveMetric('central')" id="metric-btn-central" class="px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-900 text-white">
+                        <i class="fa-solid fa-square-poll-vertical mr-1"></i> Prova Centralizzata (Max 20)
+                    </button>
+                    <button onclick="switchActiveMetric('practical')" id="metric-btn-practical" class="px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">
+                        <i class="fa-solid fa-user-gear mr-1"></i> Prova Pratica (Max 30)
+                    </button>
+                    <button onclick="switchActiveMetric('oral')" id="metric-btn-oral" class="px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">
+                        <i class="fa-solid fa-comments mr-1"></i> Colloquio Orale (Max 10)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pannello Statistiche Dinamiche e Grafico SVG -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                <!-- Dati Statistici Rapidi -->
+                <div class="lg:col-span-4 space-y-4">
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="text-xs text-slate-400 font-semibold uppercase tracking-wider block">Stato Svolgimento</span>
+                        <div class="flex items-end gap-2 mt-1">
+                            <span id="metric-completion" class="text-3xl font-extrabold text-slate-800">0%</span>
+                            <span id="metric-completion-ratio" class="text-xs text-slate-400 font-medium mb-1">(0 su 0 studenti)</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-2 rounded-full mt-3 overflow-hidden">
+                            <div id="metric-completion-bar" class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Media</span>
+                            <span id="metric-avg" class="text-lg font-bold text-slate-800 mt-0.5 block">0.00</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Max Voto</span>
+                            <span id="metric-max" class="text-lg font-bold text-emerald-600 mt-0.5 block">0.00</span>
+                        </div>
+                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Min Voto</span>
+                            <span id="metric-min" class="text-lg font-bold text-rose-600 mt-0.5 block">0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grafico a Istogramma in SVG per la Distribuzione dei Voti -->
+                <div class="lg:col-span-5 bg-slate-50/70 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between min-h-[180px]">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-slate-700">Distribuzione delle Valutazioni</span>
+                        <span class="text-[10px] text-slate-400 font-medium">Numero studenti per fascia</span>
+                    </div>
+                    
+                    <div class="flex items-end justify-between h-32 px-2 pt-2 border-b border-slate-200" id="distribution-chart-container">
+                        <!-- Generato dinamicamente via JS -->
+                    </div>
+
+                    <div class="flex justify-between text-[9px] text-slate-400 font-semibold uppercase tracking-wider mt-2 px-1">
+                        <span class="w-1/4 text-center" id="legend-insuff">Insuff. (<6)</span>
+                        <span class="w-1/4 text-center" id="legend-suff">Suff. (6-7)</span>
+                        <span class="w-1/4 text-center" id="legend-buono">Buono (7-8.5)</span>
+                        <span class="w-1/4 text-center" id="legend-eccell">Eccell. (>=8.5)</span>
+                    </div>
+                </div>
+
+                <!-- Sintesi Didattica Algoritmica -->
+                <div class="lg:col-span-3 bg-indigo-50/40 p-5 rounded-2xl border border-indigo-100/50 flex flex-col justify-between h-full min-h-[220px]">
+                    <div>
+                        <div class="text-xs font-bold text-indigo-900 uppercase tracking-widest flex items-center justify-between mb-2">
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-graduation-cap"></i>
+                                Sintesi Didattica
+                            </span>
+                        </div>
+                        <p id="metric-feedback-text" class="text-xs text-indigo-950/80 leading-relaxed font-medium mb-3">
+                            Nessun dato caricato. Si prega di importare un file SIUF o caricare i dati demo di esempio per generare la reportistica scolastica.
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-2 pt-3 border-t border-indigo-100/60 mt-auto">
+                        <button onclick="printSintesiReport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] py-2 px-3 rounded-lg shadow transition-colors flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-file-invoice"></i>
+                            <span>Scarica Relazione Sintesi (PDF)</span>
+                        </button>
+                        <div class="text-[10px] text-indigo-600/70 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-circle-info"></i>
+                            Filtro attivo: <span id="metric-feedback-class" class="font-mono uppercase font-black">TUTTI</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Griglia di focus specifico per le materie scritte (mostrata solo se è attiva la metrica centralizzata) -->
+            <div id="central-subjects-focus-box" class="mt-6 pt-5 border-t border-slate-100">
+                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                    <i class="fa-solid fa-book-open text-indigo-500 mr-1.5"></i>
+                    Dettaglio Discipline Scritte (Prova Centralizzata)
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="central-subjects-container">
+                    <!-- Generato via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Sezione Statistiche Rapide Generali -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 font-semibold uppercase tracking-wider">Studenti Mostrati</span>
+                    <span id="stat-total-students" class="text-2xl font-bold text-slate-800">0</span>
+                </div>
+            </div>
+            
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-10 h-10 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-star"></i>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 font-semibold uppercase tracking-wider">Media Ammissione</span>
+                    <span id="stat-avg-admission" class="text-2xl font-bold text-slate-800">0.0</span>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-square-poll-vertical"></i>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 font-semibold uppercase tracking-wider">Media Prova Centr.</span>
+                    <span id="stat-avg-central" class="text-2xl font-bold text-slate-800">0.00</span>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-10 h-10 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">
+                    <i class="fa-solid fa-calculator"></i>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 font-semibold uppercase tracking-wider">Media Punteggio Finale</span>
+                    <span id="stat-avg-final" class="text-2xl font-bold text-slate-800">0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sezione Esplorativa dei Dati -->
+        <main class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <!-- Toolbar Filtri e Ricerca -->
+            <div class="p-6 border-b border-slate-100 flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50/50">
+                <div class="w-full md:w-96 relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="search-input" oninput="filterData()" placeholder="Cerca studente per cognome o nome..." class="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 text-sm transition-all shadow-sm">
+                </div>
+
+                <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0" id="filter-buttons-container">
+                    <!-- Bottoni dei filtri dei gruppi generati dinamicamente per filtro multiplo -->
+                </div>
+            </div>
+
+            <!-- Tabella Studenti -->
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-left border-collapse min-w-[1100px]">
+                    <thead>
+                        <tr class="bg-slate-50/70 border-b border-slate-150 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                            <th class="py-4 px-4 text-center w-16">ID</th>
+                            <th class="py-4 px-4">Cognome</th>
+                            <th class="py-4 px-4">Nome</th>
+                            <th class="py-4 px-2 text-center w-24">Ammiss.</th>
+                            <th class="py-4 px-2 text-center w-16 text-slate-500">Ita (Max 8)</th>
+                            <th class="py-4 px-2 text-center w-16 text-slate-500">Mat (Max 7)</th>
+                            <th class="py-4 px-2 text-center w-16 text-slate-500">Ing (Max 5)</th>
+                            <th class="py-4 px-3 text-center w-28 bg-indigo-50/50 text-indigo-700 font-bold border-x border-slate-150">Prova Centr. (Max 20)</th>
+                            <th class="py-4 px-3 text-center w-24 text-slate-600">Pratica (Max 30)</th>
+                            <th class="py-4 px-3 text-center w-24 text-slate-600">Colloquio (Max 10)</th>
+                            <th class="py-4 px-3 text-center w-20 text-slate-600">Bonus (Max 5)</th>
+                            <th class="py-4 px-4 text-center w-28 bg-emerald-50/50 text-emerald-700 font-bold border-l border-slate-150">Punt. Finale</th>
+                            <th class="py-4 px-4 text-center w-28">Classe</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-150 text-sm">
+                        <!-- Generato dinamicamente con JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden py-16 px-4 text-center">
+                <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-xl mx-auto mb-4">
+                    <i class="fa-solid fa-user-slash"></i>
+                </div>
+                <h3 class="text-base font-semibold text-slate-800">Nessuno studente in archivio</h3>
+                <p class="text-xs text-slate-400 mt-1 mb-4">Trascina un file CSV del SIUF nella zona di caricamento in alto per iniziare.</p>
+                <button onclick="resetToDefaults()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-4 py-2 rounded-xl text-xs transition-all shadow-md shadow-emerald-600/10">
+                    <i class="fa-solid fa-magic mr-1"></i> Carica dati demo di esempio
+                </button>
+            </div>
+
+            <!-- Footer Tabella -->
+            <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <div> Mostrati <span id="visible-count" class="font-bold text-slate-600">0</span> di <span id="total-count" class="font-bold text-slate-600">0</span> studenti </div>
+                <div class="flex items-center gap-4">
+                    <span id="active-filter-badge" class="bg-emerald-50 text-emerald-700 font-semibold px-2 py-1 rounded">Modalità: Tutto</span>
+                    <div><i class="fa-solid fa-circle-info mr-1 text-emerald-500"></i> Valori N/A rimossi per un calcolo corretto</div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Info sul file generato -->
+        <footer class="mt-8 bg-emerald-50 border border-emerald-100 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center mt-0.5 md:mt-0">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <div>
+                    <h4 class="font-bold text-emerald-900 text-sm">Automazioni attive nel foglio Excel di esportazione:</h4>
+                    <p class="text-xs text-emerald-700 mt-0.5">La colonna "Origine" è stata rimossa completamente dai file generati per privacy e pulizia. I fogli Excel verranno denominati automaticamente con le classi specificate (es. "4A", "4B").</p>
+                </div>
+            </div>
+            <div class="text-xs text-emerald-600 bg-white border border-emerald-100 px-3 py-1.5 rounded-lg font-medium self-end md:self-auto">
+                Formati supportati: Microsoft Excel (.xlsx), Stampa PDF
+            </div>
+        </footer>
+    </div>
+
+    <!-- SEZIONE SOLO PER STAMPA -->
+    <div id="print-section" class="w-full">
+        <!-- Generato dinamicamente via Javascript -->
+    </div>
+
+    <!-- Script logico -->
+    <script>
+        // Database dei gruppi predefiniti (usati come demo di esempio, riscalati sui limiti ministeriali corretti)
+        const defaultDataset = {
+            "Griglia_264900": [
+                {"Id": 27228, "Cognome": "ALLUSHI", "Nome": "BRUNILDA", "Punteggio Ammissione": 31, "Italiano": 4.10, "Matematica": 2.80, "Inglese": 2.25, "Profess.": 24.00, "Colloquio": 7.25, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26829, "Cognome": "BARATTI", "Nome": "FEDERICA", "Punteggio Ammissione": 28, "Italiano": 4.85, "Matematica": 0.40, "Inglese": 4.25, "Profess.": 23.00, "Colloquio": 7.50, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27232, "Cognome": "BERNARDI", "Nome": "FEDERICO", "Punteggio Ammissione": 32, "Italiano": 5.35, "Matematica": 2.60, "Inglese": 1.50, "Profess.": 26.00, "Colloquio": 6.50, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27235, "Cognome": "BLAJ", "Nome": "ALEXANDRA MARIA", "Punteggio Ammissione": 27, "Italiano": 3.50, "Matematica": 1.20, "Inglese": 1.65, "Profess.": 20.00, "Colloquio": 6.25, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26832, "Cognome": "BOULGOUT", "Nome": "AMINA", "Punteggio Ammissione": 29, "Italiano": 2.10, "Matematica": 0.80, "Inglese": 1.70, "Profess.": 21.00, "Colloquio": "", "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 182637, "Cognome": "CORRADINI", "Nome": "CHIARA", "Punteggio Ammissione": 35, "Italiano": 5.75, "Matematica": 3.80, "Inglese": 1.75, "Profess.": 28.00, "Colloquio": 9.00, "Capolav.": "", "Bonus Integrativo": 3.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 64629, "Cognome": "EL BAKKARI", "Nome": "MARIA", "Punteggio Ammissione": 30, "Italiano": 4.95, "Matematica": 1.60, "Inglese": 1.70, "Profess.": 22.00, "Colloquio": 7.00, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26844, "Cognome": "GAOUA", "Nome": "AISHA", "Punteggio Ammissione": 30, "Italiano": 5.75, "Matematica": 2.40, "Inglese": 2.35, "Profess.": 25.00, "Colloquio": 8.25, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27244, "Cognome": "GRASSO", "Nome": "EMMANUELA", "Punteggio Ammissione": 28, "Italiano": 4.40, "Matematica": 1.90, "Inglese": 4.45, "Profess.": 22.00, "Colloquio": 7.50, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27247, "Cognome": "HU", "Nome": "NINGJIE", "Punteggio Ammissione": 36, "Italiano": 4.55, "Matematica": 2.40, "Inglese": 3.70, "Profess.": 27.00, "Colloquio": 8.50, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27250, "Cognome": "KAUR", "Nome": "BALJINDER", "Punteggio Ammissione": 40, "Italiano": 5.35, "Matematica": 5.00, "Inglese": 4.60, "Profess.": 30.00, "Colloquio": 9.75, "Capolav.": "", "Bonus Integrativo": 4.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 27253, "Cognome": "KAUR", "Nome": "RAMANDEEP", "Punteggio Ammissione": 28, "Italiano": 5.05, "Matematica": 3.60, "Inglese": 2.15, "Profess.": 24.00, "Colloquio": 7.00, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 204108, "Cognome": "LAZZARINI", "Nome": "LUANA", "Punteggio Ammissione": 30, "Italiano": 5.20, "Matematica": 4.50, "Inglese": 1.30, "Profess.": 25.00, "Colloquio": 6.75, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 204251, "Cognome": "MALAGO'", "Nome": "FILIPPO", "Punteggio Ammissione": 30, "Italiano": 6.55, "Matematica": 3.80, "Inglese": 0.95, "Profess.": 22.00, "Colloquio": 7.25, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26850, "Cognome": "MARANI", "Nome": "MIA", "Punteggio Ammissione": 34, "Italiano": 6.25, "Matematica": 3.00, "Inglese": 2.75, "Profess.": 26.00, "Colloquio": 8.75, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26847, "Cognome": "MARIOTTI", "Nome": "MADDISON", "Punteggio Ammissione": 25, "Italiano": 3.05, "Matematica": 1.20, "Inglese": 3.90, "Profess.": "", "Colloquio": 6.50, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26821, "Cognome": "NATOLA", "Nome": "MELISSA", "Punteggio Ammissione": 34, "Italiano": 6.35, "Matematica": 3.00, "Inglese": 2.40, "Profess.": 27.00, "Colloquio": 8.00, "Capolav.": "", "Bonus Integrativo": 1.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26838, "Cognome": "PINNA", "Nome": "NICHOLAS", "Punteggio Ammissione": 28, "Italiano": 3.20, "Matematica": 1.50, "Inglese": 0.75, "Profess.": 20.00, "Colloquio": 5.75, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26841, "Cognome": "ROSSIGNOLI", "Nome": "MATILDE", "Punteggio Ammissione": 35, "Italiano": 6.55, "Matematica": 3.40, "Inglese": 1.65, "Profess.": 29.00, "Colloquio": 9.25, "Capolav.": "", "Bonus Integrativo": 3.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26826, "Cognome": "SELOGNA", "Nome": "NOAH", "Punteggio Ammissione": 33, "Italiano": 5.55, "Matematica": 4.20, "Inglese": 4.20, "Profess.": 28.00, "Colloquio": 8.50, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26853, "Cognome": "ZAGO", "Nome": "SOPHIA", "Punteggio Ammissione": 31, "Italiano": 3.75, "Matematica": 1.60, "Inglese": 4.90, "Profess.": 22.00, "Colloquio": 7.75, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 26835, "Cognome": "ZIBORDI", "Nome": "MATILDE", "Punteggio Ammissione": 32, "Italiano": 7.45, "Matematica": 3.50, "Inglese": 2.90, "Profess.": 28.00, "Colloquio": 9.00, "Capolav.": "", "Bonus Integrativo": 2.50, "Punteggio Finale": "", "Idoneita": ""}
+            ],
+            "Griglia_235010": [
+                {"Id": 164570, "Cognome": "CARBONI STEVIC", "Nome": "CRISTIAN", "Punteggio Ammissione": 26, "Italiano": 6.50, "Matematica": 2.70, "Inglese": 0.75, "Profess.": 22.00, "Colloquio": 6.75, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 195874, "Cognome": "CRUZ", "Nome": "ZHATT GABRIEL", "Punteggio Ammissione": 30, "Italiano": 5.15, "Matematica": 4.30, "Inglese": 2.75, "Profess.": 26.00, "Colloquio": 8.00, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 23543, "Cognome": "DE BIASE", "Nome": "GELSOMINA", "Punteggio Ammissione": 29, "Italiano": 4.55, "Matematica": 1.60, "Inglese": 0.80, "Profess.": 20.00, "Colloquio": 6.00, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 195876, "Cognome": "PELATI", "Nome": "LUDOVICA", "Punteggio Ammissione": 29, "Italiano": 4.45, "Matematica": 3.60, "Inglese": 1.45, "Profess.": 23.00, "Colloquio": 7.00, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 23768, "Cognome": "SIMEONI", "Nome": "FRANCESCO", "Punteggio Ammissione": 29, "Italiano": 5.55, "Matematica": 3.50, "Inglese": 3.55, "Profess.": 25.00, "Colloquio": 7.75, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 195875, "Cognome": "TOMON", "Nome": "OLIWIA EWA", "Punteggio Ammissione": 29, "Italiano": 3.20, "Matematica": 4.30, "Inglese": 0.85, "Profess.": "", "Colloquio": 6.50, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""}
+            ],
+            "Griglia_201716": [
+                {"Id": 191596, "Cognome": "BARBU", "Nome": "ALESSIA AURORA", "Punteggio Ammissione": 34, "Italiano": 5.85, "Matematica": 5.40, "Inglese": 1.85, "Profess.": 27.00, "Colloquio": 8.75, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 97964, "Cognome": "BERTAGNA MORTARA", "Nome": "ILARIA", "Punteggio Ammissione": 35, "Italiano": 7.55, "Matematica": 5.00, "Inglese": 2.80, "Profess.": 29.00, "Colloquio": 9.00, "Capolav.": "", "Bonus Integrativo": 2.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 160267, "Cognome": "CAPECE", "Nome": "MARISOL", "Punteggio Ammissione": 38, "Italiano": 6.75, "Matematica": 6.20, "Inglese": 4.00, "Profess.": 28.00, "Colloquio": 9.50, "Capolav.": "", "Bonus Integrativo": 3.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 191595, "Cognome": "CARDOSO SIMOES", "Nome": "VICTORIA", "Punteggio Ammissione": 30, "Italiano": 5.15, "Matematica": 3.90, "Inglese": 2.15, "Profess.": 24.00, "Colloquio": 7.50, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 191597, "Cognome": "CUNHA MELLO", "Nome": "ISABELA", "Punteggio Ammissione": 30, "Italiano": 4.85, "Matematica": 5.40, "Inglese": 2.35, "Profess.": 25.00, "Colloquio": 7.75, "Capolav.": "", "Bonus Integrativo": 1.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 97965, "Cognome": "FLORIAN", "Nome": "CARLOTTA", "Punteggio Ammissione": 39, "Italiano": 7.55, "Matematica": 5.40, "Inglese": 4.75, "Profess.": 30.00, "Colloquio": 10.00, "Capolav.": "", "Bonus Integrativo": 4.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 160271, "Cognome": "FLORIAN", "Nome": "SOFIA", "Punteggio Ammissione": 39, "Italiano": 7.70, "Matematica": 5.80, "Inglese": 4.05, "Profess.": 30.00, "Colloquio": 9.75, "Capolav.": "", "Bonus Integrativo": 4.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 160268, "Cognome": "GOGLIA", "Nome": "DENISE", "Punteggio Ammissione": 37, "Italiano": 6.70, "Matematica": 5.40, "Inglese": 4.60, "Profess.": 28.00, "Colloquio": 9.25, "Capolav.": "", "Bonus Integrativo": 3.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 160269, "Cognome": "GROSSI", "Nome": "MARLEY", "Punteggio Ammissione": 30, "Italiano": 4.75, "Matematica": 5.80, "Inglese": 2.35, "Profess.": 24.00, "Colloquio": 7.25, "Capolav.": "", "Bonus Integrativo": null, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 35872, "Cognome": "KAUR", "Nome": "SIMRAT PAL", "Punteggio Ammissione": 37, "Italiano": 5.35, "Matematica": 6.20, "Inglese": 4.15, "Profess.": 29.00, "Colloquio": 9.00, "Capolav.": "", "Bonus Integrativo": 3.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 67366, "Cognome": "MAESTRINI", "Nome": "STELLA", "Punteggio Ammissione": 32, "Italiano": 6.50, "Matematica": 5.40, "Inglese": 2.35, "Profess.": 26.00, "Colloquio": 8.25, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 160270, "Cognome": "NOOR", "Nome": "MAH", "Punteggio Ammissione": 40, "Italiano": 4.75, "Matematica": 5.90, "Inglese": 4.00, "Profess.": 30.00, "Colloquio": 10.00, "Capolav.": "", "Bonus Integrativo": 5.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 67365, "Cognome": "PRATI", "Nome": "MARTINA", "Punteggio Ammissione": 40, "Italiano": 6.20, "Matematica": 4.20, "Inglese": 3.05, "Profess.": 27.00, "Colloquio": 9.00, "Capolav.": "", "Bonus Integrativo": 2.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 35873, "Cognome": "ROSSI", "Nome": "MARIA VITTORIA", "Punteggio Ammissione": 38, "Italiano": 6.25, "Matematica": 5.50, "Inglese": 4.45, "Profess.": 28.00, "Colloquio": 9.50, "Capolav.": "", "Bonus Integrativo": 3.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 191594, "Cognome": "SCARDUELLI", "Nome": "SOFIA", "Punteggio Ammissione": 32, "Italiano": 5.75, "Matematica": 5.40, "Inglese": 1.15, "Profess.": "", "Colloquio": 7.00, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 35874, "Cognome": "SHAKIL", "Nome": "SANIA", "Punteggio Ammissione": 36, "Italiano": 7.55, "Matematica": 5.90, "Inglese": 4.15, "Profess.": 29.00, "Colloquio": 9.25, "Capolav.": "", "Bonus Integrativo": 3.50, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 67364, "Cognome": "SIGNORETTI", "Nome": "AURORA", "Punteggio Ammissione": 40, "Italiano": 6.35, "Matematica": 5.40, "Inglese": 3.45, "Profess.": 30.00, "Colloquio": 9.75, "Capolav.": "", "Bonus Integrativo": 4.50, "Punteggio Finale": "", "Idoneita": ""}
+            ],
+            "Griglia_585508": [
+                {"Id": 120542, "Cognome": "ANDREANI", "Nome": "PIETRO", "Punteggio Ammissione": 26, "Italiano": 4.40, "Matematica": 1.60, "Inglese": 2.45, "Profess.": 20.00, "Colloquio": 6.00, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 158216, "Cognome": "BROCCAIOLI", "Nome": "LORENZO", "Punteggio Ammissione": 30, "Italiano": 5.65, "Matematica": 3.60, "Inglese": 1.00, "Profess.": 23.00, "Colloquio": 7.25, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 220554, "Cognome": "BROCCAIOLI", "Nome": "SIMONE", "Punteggio Ammissione": 32, "Italiano": 4.05, "Matematica": 3.20, "Inglese": 2.15, "Profess.": 23.00, "Colloquio": 7.50, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 59715, "Cognome": "DUMITRESCU", "Nome": "DENIS ANDREI", "Punteggio Ammissione": 29, "Italiano": 5.25, "Matematica": 4.30, "Inglese": 2.95, "Profess.": 24.00, "Colloquio": 7.00, "Capolav.": "", "Bonus Integrativo": 1.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 220556, "Cognome": "LIGABUE", "Nome": "MATTEO", "Punteggio Ammissione": 32, "Italiano": 3.20, "Matematica": 1.20, "Inglese": 3.00, "Profess.": 21.00, "Colloquio": "", "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 152660, "Cognome": "NADALINI", "LB": "ALEX", "Nome": "ALEX", "Punteggio Ammissione": 34, "Italiano": 7.15, "Matematica": 3.90, "Inglese": 4.05, "Profess.": 27.00, "Colloquio": 8.50, "Capolav.": "", "Bonus Integrativo": 2.00, "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 59717, "Cognome": "RUSSO", "Nome": "BEATRICE", "Punteggio Ammissione": 30, "Italiano": 4.00, "Matematica": 1.60, "Inglese": 1.15, "Profess.": 20.00, "Colloquio": 6.50, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 93722, "Cognome": "SPEZIALI", "Nome": "LINDA", "Punteggio Ammissione": 30, "Italiano": 4.20, "Matematica": 1.60, "Inglese": 1.15, "Profess.": 20.00, "Colloquio": 6.25, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""},
+                {"Id": 220555, "Cognome": "VAJDA", "Nome": "ATTILA GERGO", "Punteggio Ammissione": 30, "Italiano": 3.55, "Matematica": 2.80, "Inglese": 0.50, "Profess.": "", "Colloquio": 5.75, "Capolav.": "", "Bonus Integrativo": "", "Punteggio Finale": "", "Idoneita": ""}
+            ]
+        };
+
+        // Aliases predefiniti per i gruppi di prova
+        const defaultAliases = {
+            "Griglia_264900": "4A",
+            "Griglia_235010": "4B",
+            "Griglia_201716": "5A",
+            "Griglia_585508": "5B"
+        };
+
+        // Dataset attivo caricato nella sessione utente
+        let activeDataset = {};
+        
+        // Mappatura delle personalizzazioni delle classi (es. "Griglia_264900" -> "4A")
+        let groupAliases = {};
+        
+        // Dataset elaborato con calcoli matematici dinamici, senza colonna Capolavoro
+        let processedDataset = {};
+        
+        // Filtri multipli attivi (Array contenente i groupKeys delle classi selezionate)
+        let selectedFilters = [];
+        let searchQuery = "";
+        
+        // Metrica corrente visualizzata nell'andamento delle prove d'esame
+        let activePerformanceMetric = "central"; 
+
+        // Mostra notifica di successo/errore personalizzata (sostituisce alert())
+        function showToast(message, type = "success") {
+            const toast = document.getElementById("toast-notification");
+            const iconBox = document.getElementById("toast-icon-box");
+            const icon = document.getElementById("toast-icon");
+            const msg = document.getElementById("toast-message");
+
+            msg.innerText = message;
+            
+            if (type === "success") {
+                iconBox.className = "w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center text-white text-xs";
+                icon.className = "fa-solid fa-circle-check";
+            } else if (type === "error") {
+                iconBox.className = "w-7 h-7 bg-rose-500 rounded-lg flex items-center justify-center text-white text-xs";
+                icon.className = "fa-solid fa-circle-exclamation";
+            } else if (type === "warning") {
+                iconBox.className = "w-7 h-7 bg-amber-500 rounded-lg flex items-center justify-center text-white text-xs";
+                icon.className = "fa-solid fa-triangle-exclamation";
+            } else {
+                iconBox.className = "w-7 h-7 bg-blue-500 rounded-lg flex items-center justify-center text-white text-xs";
+                icon.className = "fa-solid fa-circle-info";
+            }
+
+            toast.classList.remove("translate-y-20", "opacity-0");
+            toast.classList.add("translate-y-0", "opacity-100");
+
+            setTimeout(() => {
+                toast.classList.remove("translate-y-0", "opacity-100");
+                toast.classList.add("translate-y-20", "opacity-0");
+            }, 4000);
+        }
+
+        // Inizializza con database vuoto per impostazione predefinita
+        function initializeData() {
+            const saved = localStorage.getItem("siuf_dataset");
+            const savedAliases = localStorage.getItem("siuf_group_aliases");
+
+            if (saved) {
+                try {
+                    activeDataset = JSON.parse(saved);
+                } catch(e) {
+                    activeDataset = {};
+                }
+            } else {
+                activeDataset = {}; // Vuoto assoluto per impostazione predefinita all'avvio
+            }
+
+            if (savedAliases) {
+                try {
+                    groupAliases = JSON.parse(savedAliases);
+                } catch(e) {
+                    groupAliases = {};
+                }
+            } else {
+                groupAliases = JSON.parse(JSON.stringify(defaultAliases));
+            }
+
+            processAllData();
+        }
+
+        // Salva lo stato corrente del database nel localStorage
+        function saveData() {
+            localStorage.setItem("siuf_dataset", JSON.stringify(activeDataset));
+            localStorage.setItem("siuf_group_aliases", JSON.stringify(groupAliases));
+        }
+
+        // Modifica in tempo reale l'etichetta personalizzata (alias) del gruppo
+        function renameGroup(key, newName) {
+            groupAliases[key] = newName.trim();
+            saveData();
+            renderFilterButtons();
+            renderTable();
+        }
+
+        // Estrattore di valori robusto e insensibile a maiuscole, spazi e punteggiatura nelle intestazioni
+        function getRowValue(row, keyVariants) {
+            const normalizedKeys = {};
+            Object.keys(row).forEach(k => {
+                const norm = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+                normalizedKeys[norm] = k;
+            });
+
+            for (let variant of keyVariants) {
+                const normVariant = variant.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (normalizedKeys[normVariant] !== undefined) {
+                    return row[normalizedKeys[normVariant]];
+                }
+            }
+            return "";
+        }
+
+        // Funzione di elaborazione di tutti i gruppi caricati con logica di arrotondamento e capping dei massimi d'esame
+        function processAllData() {
+            processedDataset = {};
+            Object.keys(activeDataset).forEach(groupKey => {
+                processedDataset[groupKey] = activeDataset[groupKey].map(student => {
+                    let idRaw = getRowValue(student, ["Id", "ID", "Identifier", "Matricola"]);
+                    let cogRaw = getRowValue(student, ["Cognome", "Surname", "Cogn"]);
+                    let nomRaw = getRowValue(student, ["Nome", "Name"]);
+                    let ammRaw = getRowValue(student, ["Punteggio Ammissione", "Ammissione", "Punt Amm", "Amm", "PunteggioAmmissione", "Ammissione Esame"]);
+                    let itaRaw = getRowValue(student, ["Italiano", "Ita"]);
+                    let matRaw = getRowValue(student, ["Matematica", "Mat", "Mate", "Matematic"]);
+                    let ingRaw = getRowValue(student, ["Inglese", "Ing"]);
+                    let profRaw = getRowValue(student, ["Profess.", "Profess", "Pratica", "Prova Pratica", "Professionalizzante", "Prof", "Professore", "Prova Profess."]);
+                    let collRaw = getRowValue(student, ["Colloquio", "Oral", "Orale", "Coll"]);
+                    let bonusRaw = getRowValue(student, ["Bonus Integrativo", "Bonus", "Bonus Int", "BonusIntegrativo", "Punti Aggiunti", "Punti Aggiuntivi", "Punti Aggiunti", "Punti\nAggiunti", "PuntiAggiunti"]);
+                    let idonRaw = getRowValue(student, ["Idoneita", "Idoneità", "Esito"]);
+
+                    // Definizione di completezza della riga: Italiano, Matematica, Inglese, Profess, Colloquio devono essere tutti inseriti
+                    const isComplete = 
+                        itaRaw !== "" && itaRaw !== null && itaRaw !== undefined &&
+                        matRaw !== "" && matRaw !== null && matRaw !== undefined &&
+                        ingRaw !== "" && ingRaw !== null && ingRaw !== undefined &&
+                        profRaw !== "" && profRaw !== null && profRaw !== undefined &&
+                        collRaw !== "" && collRaw !== null && collRaw !== undefined;
+
+                    let ita = itaRaw !== "" && itaRaw !== null && itaRaw !== undefined ? parseFloat(itaRaw) : null;
+                    let mat = matRaw !== "" && matRaw !== null && matRaw !== undefined ? parseFloat(matRaw) : null;
+                    let ing = ingRaw !== "" && ingRaw !== null && ingRaw !== undefined ? parseFloat(ingRaw) : null;
+                    let prof = profRaw !== "" && profRaw !== null && profRaw !== undefined ? parseFloat(profRaw) : null;
+                    let coll = collRaw !== "" && collRaw !== null && collRaw !== undefined ? parseFloat(collRaw) : null;
+                    let bonus = bonusRaw !== "" && bonusRaw !== null && bonusRaw !== undefined ? parseFloat(bonusRaw) : null;
+
+                    // Applicazione automatica dei massimi di legge con warning toast normalizzato
+                    let outOfBounds = false;
+                    if (ita !== null && ita > 8) { ita = 8; outOfBounds = true; }
+                    if (mat !== null && mat > 7) { mat = 7; outOfBounds = true; }
+                    if (ing !== null && ing > 5) { ing = 5; outOfBounds = true; }
+                    if (prof !== null && prof > 30) { prof = 30; outOfBounds = true; }
+                    if (coll !== null && coll > 10) { coll = 10; outOfBounds = true; }
+                    if (bonus !== null && bonus > 5) { bonus = 5; outOfBounds = true; }
+
+                    if (outOfBounds && !window.cappedWarningActive) {
+                        window.cappedWarningActive = true;
+                        setTimeout(() => {
+                            showToast("Rilevati valori fuori scala. Le valutazioni sono state ricalibrate ai limiti ministeriali.", "warning");
+                            window.cappedWarningActive = false;
+                        }, 800);
+                    }
+
+                    // 1. Calcolo Prova Centralizzata (Somma di Ita + Mate + Ing: max 20)
+                    const provaCentralizzata = parseFloat(((ita || 0) + (mat || 0) + (ing || 0)).toFixed(2));
+                    
+                    const amm = parseFloat(ammRaw) || 0;
+
+                    // 2. Calcolo Punteggio Finale (Se completo, arrotonda all'intero)
+                    let punteggioFinale = amm + provaCentralizzata + (prof || 0) + (coll || 0) + (bonus || 0);
+                    if (isComplete) {
+                        punteggioFinale = Math.round(punteggioFinale);
+                    } else {
+                        punteggioFinale = parseFloat(punteggioFinale.toFixed(2));
+                    }
+
+                    return {
+                        "Id": idRaw ? parseInt(idRaw) : 0,
+                        "Cognome": cogRaw ? cogRaw.toString().trim().toUpperCase() : "",
+                        "Nome": nomRaw ? nomRaw.toString().trim() : "",
+                        "Punteggio Ammissione": amm,
+                        "Italiano": ita,
+                        "Matematica": mat,
+                        "Inglese": ing,
+                        "Prova Centralizzata": provaCentralizzata,
+                        "Profess.": prof,
+                        "Colloquio": coll,
+                        "Bonus Integrativo": bonus,
+                        "Punteggio Finale": punteggioFinale,
+                        "Idoneita": idonRaw !== "" ? idonRaw : null,
+                        "IsComplete": isComplete
+                    };
+                });
+            });
+
+            // Sincronizza i filtri multipli attivi mantenendo quelli validi o impostandoli tutti come attivi per default
+            const datasetKeys = Object.keys(activeDataset);
+            selectedFilters = selectedFilters.filter(k => datasetKeys.includes(k));
+            if (selectedFilters.length === 0 && datasetKeys.length > 0) {
+                selectedFilters = [...datasetKeys];
+            }
+
+            renderFilterButtons();
+            updateSourceFilesList();
+            renderTable();
+        }
+
+        // Ricostruisce la lista visiva dei sorgenti inseriti con l'input di ridenominazione classe
+        function updateSourceFilesList() {
+            const listContainer = document.getElementById("sources-list");
+            listContainer.innerHTML = "";
+            const keys = Object.keys(activeDataset);
+            document.getElementById("source-count").innerText = keys.length;
+
+            if (keys.length === 0) {
+                listContainer.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">Nessun file presente. Carica un CSV!</p>`;
+                return;
+            }
+
+            keys.forEach(key => {
+                const numStudents = activeDataset[key].length;
+                const currentAlias = groupAliases[key] || key.replace("Griglia_", "");
+                
+                const fileBox = document.createElement("div");
+                fileBox.className = "flex flex-col gap-2 p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200/80 rounded-xl text-xs transition-colors";
+                fileBox.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2 truncate">
+                            <i class="fa-solid fa-file-csv text-emerald-500 text-base flex-shrink-0"></i>
+                            <span class="font-bold text-slate-700 truncate" title="${key}">${key.replace("Griglia_", "SIUF_")}</span>
+                        </div>
+                        <button onclick="deleteSource('${key}')" class="text-slate-400 hover:text-rose-600 p-1 transition-colors" title="Elimina questo file">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-slate-200">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider pl-1 whitespace-nowrap">Classe:</span>
+                        <input type="text" oninput="renameGroup('${key}', this.value)" value="${currentAlias}" placeholder="es. 4A, 4B" class="w-full px-1.5 py-0.5 bg-slate-50 rounded text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] transition-all">
+                    </div>
+                    
+                    <div class="text-[10px] text-slate-400 font-medium flex justify-between px-1">
+                        <span>Studenti: <strong>${numStudents}</strong></span>
+                        <span class="italic font-mono">${currentAlias}</span>
+                    </div>
+                `;
+                listContainer.appendChild(fileBox);
+            });
+        }
+
+        // Rimuove un singolo file caricato
+        function deleteSource(key) {
+            delete activeDataset[key];
+            delete groupAliases[key];
+            selectedFilters = selectedFilters.filter(k => k !== key);
+            saveData();
+            processAllData();
+            showToast("Modulo rimosso con successo", "info");
+        }
+
+        // Svuota completamente la sessione
+        function clearAllSources() {
+            activeDataset = {};
+            groupAliases = {};
+            selectedFilters = [];
+            saveData();
+            processAllData();
+            showToast("Tutte le fonti e i gruppi sono stati rimossi", "info");
+        }
+
+        // Carica i file di esempio (test rapido per l'utente)
+        function resetToDefaults() {
+            activeDataset = JSON.parse(JSON.stringify(defaultDataset));
+            groupAliases = JSON.parse(JSON.stringify(defaultAliases));
+            selectedFilters = Object.keys(defaultDataset);
+            saveData();
+            processAllData();
+            showToast("Ripristinato il database di prova con i 4 gruppi scolastici", "success");
+        }
+
+        // Parser avanzato client-side ultra-robusto per file CSV emessi da SIUF
+        function parseSIUFCsv(text) {
+            if (text.startsWith('\uFEFF')) {
+                text = text.slice(1);
+            }
+            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+            let rows = [];
+            let currentRow = [];
+            let currentField = "";
+            let inQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                let char = text[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === '\n' && !inQuotes) {
+                    currentRow.push(currentField);
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentField = "";
+                } else if ((char === ',' || char === ';' || char === '\t') && !inQuotes) {
+                    currentRow.push(currentField);
+                    currentField = "";
+                } else {
+                    currentField += char;
+                }
+            }
+            if (currentField || currentRow.length > 0) {
+                currentRow.push(currentField);
+                rows.push(currentRow);
+            }
+
+            let cleanedRows = rows.map(row => 
+                row.map(val => val.trim().replace(/^"|"$/g, ''))
+            ).filter(row => row.length > 0 && row.some(val => val !== ""));
+
+            if (cleanedRows.length === 0) return [];
+
+            let isTabellaPunteggi = false;
+            for (let i = 0; i < Math.min(4, cleanedRows.length); i++) {
+                let rowJoined = cleanedRows[i].join(" ").toUpperCase();
+                if (rowJoined.includes("ALLIEVI") || rowJoined.includes("AMMISSIONE ESAME") || rowJoined.includes("PROVA PROFESS.")) {
+                    isTabellaPunteggi = true;
+                    break;
+                }
+            }
+
+            if (isTabellaPunteggi) {
+                let records = [];
+                cleanedRows.forEach((parts) => {
+                    let rowJoined = parts.join(" ").toUpperCase();
+                    if (rowJoined.includes("ALLIEVI") || rowJoined.includes("COGNOME") || rowJoined.includes("ITALIANO") || rowJoined.includes("MATEMATIC")) {
+                        return;
+                    }
+
+                    if (parts.length >= 3 && parts[1] !== "" && parts[2] !== "") {
+                        let cleanParts = parts.map(p => (p === "N/A" || p === "NaN" || p === "null" || p === "undefined") ? "" : p);
+                        records.push({
+                            "Id": cleanParts[0] || (records.length + 1).toString(),
+                            "Cognome": cleanParts[1],
+                            "Nome": cleanParts[2],
+                            "Punteggio Ammissione": cleanParts[4] || "",
+                            "Italiano": cleanParts[9] || "",
+                            "Matematica": cleanParts[10] || "",
+                            "Inglese": cleanParts[11] || "",
+                            "Profess.": cleanParts[5] || "",
+                            "Colloquio": cleanParts[7] || "",
+                            "Bonus Integrativo": cleanParts[8] || "",
+                            "Idoneita": ""
+                        });
+                    }
+                });
+                return records;
+            } else {
+                let headers = cleanedRows[0];
+                let normalizedHeaders = headers.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+                
+                function findIndex(variants) {
+                    for (let variant of variants) {
+                        let normVariant = variant.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        let idx = normalizedHeaders.indexOf(normVariant);
+                        if (idx !== -1) return idx;
+                    }
+                    return -1;
+                }
+
+                let idxId = findIndex(["Id", "ID", "Identifier", "Matricola"]);
+                let idxCog = findIndex(["Cognome", "Surname", "Cogn"]);
+                let idxNom = findIndex(["Nome", "Name"]);
+                let idxAmm = findIndex(["Punteggio Ammissione", "Ammissione", "Punt Amm", "Amm", "PunteggioAmmissione"]);
+                let idxIta = findIndex(["Italiano", "Ita"]);
+                let idxMat = findIndex(["Matematica", "Mat", "Mate", "Matematic"]);
+                let idxIng = findIndex(["Inglese", "Ing"]);
+                let idxProf = findIndex(["Profess.", "Profess", "Pratica", "Prova Pratica", "Professionalizzante", "Prof", "Professore", "Prova Profess."]);
+                let idxColl = findIndex(["Colloquio", "Oral", "Orale", "Coll"]);
+                let idxBonus = findIndex(["Bonus Integrativo", "Bonus", "Bonus Int", "BonusIntegrativo", "Punti Aggiunti", "Punti Aggiuntivi", "Punti Aggiunti", "Punti\nAggiunti", "PuntiAggiunti"]);
+                let idxIdon = findIndex(["Idoneita", "Idoneità", "Esito"]);
+
+                let records = [];
+                for (let i = 1; i < cleanedRows.length; i++) {
+                    let parts = cleanedRows[i];
+                    if (parts[idxCog] === "" && parts[idxNom] === "") continue;
+                    if (parts[idxId] === "Id" || parts[idxId] === "ID") continue;
+
+                    function getVal(idx) {
+                        if (idx === -1 || idx >= parts.length) return "";
+                        let v = parts[idx];
+                        if (v === "N/A" || v === "NaN" || v === "null" || v === "undefined") return "";
+                        return v;
+                    }
+
+                    records.push({
+                        "Id": getVal(idxId) || (records.length + 1).toString(),
+                        "Cognome": getVal(idxCog),
+                        "Nome": getVal(idxNom),
+                        "Punteggio Ammissione": getVal(idxAmm),
+                        "Italiano": getVal(idxIta),
+                        "Matematica": getVal(idxMat),
+                        "Inglese": getVal(idxIng),
+                        "Profess.": getVal(idxProf),
+                        "Colloquio": getVal(idxColl),
+                        "Bonus Integrativo": getVal(idxBonus),
+                        "Idoneita": getVal(idxIdon)
+                    });
+                }
+                return records;
+            }
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            handleUploadedFiles(files);
+        }
+
+        function handleUploadedFiles(files) {
+            if (files.length === 0) return;
+            
+            let filesLoaded = 0;
+            let errorsCount = 0;
+
+            Array.from(files).forEach(file => {
+                if (!file.name.endsWith('.csv')) {
+                    showToast(`Il file "${file.name}" non è un foglio CSV valido.`, "error");
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const text = event.target.result;
+                        const parsedData = parseSIUFCsv(text);
+
+                        if (parsedData.length === 0) {
+                            showToast(`Il file "${file.name}" è vuoto o privo di dati.`, "error");
+                            return;
+                        }
+
+                        let rawName = file.name.replace(/\.[^/.]+$/, ""); 
+                        let groupKey = "Griglia_" + rawName.replace(/GrigliaStudenti_/i, "").replace(/[^a-zA-Z0-9]/g, "_");
+
+                        let cleanAlias = rawName.replace(/GrigliaStudenti_|tabellaPunteggi_/i, "").replace(/[^a-zA-Z0-9\s]/g, " ").trim();
+                        if (!cleanAlias) {
+                            cleanAlias = "Nuovo Gruppo";
+                        } else {
+                            if (/^\d+$/.test(cleanAlias)) {
+                                cleanAlias = "Classe " + cleanAlias.substring(cleanAlias.length - 4);
+                            }
+                        }
+
+                        activeDataset[groupKey] = parsedData;
+                        groupAliases[groupKey] = cleanAlias;
+                        
+                        filesLoaded++;
+                        if (filesLoaded + errorsCount === files.length) {
+                            saveData();
+                            processAllData();
+                            showToast(`Caricati con successo ${filesLoaded} file SIUF`, "success");
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        errorsCount++;
+                        showToast(`Errore lettura file "${file.name}": ${err.message}`, "error");
+                    }
+                };
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        // Ricostruisce dinamicamente i bottoni dei filtri con i nomi personalizzati e selezione multipla
+        function renderFilterButtons() {
+            const container = document.getElementById("filter-buttons-container");
+            container.innerHTML = "";
+
+            const keys = Object.keys(processedDataset).sort();
+            if (keys.length === 0) {
+                return;
+            }
+
+            // Pulsante "Tutti" per la selezione/deselezione cumulativa rapida
+            const btnAll = document.createElement("button");
+            btnAll.id = "btn-filter-all";
+            btnAll.onclick = () => {
+                if (selectedFilters.length === keys.length) {
+                    selectedFilters = []; // Svuota
+                } else {
+                    selectedFilters = [...keys]; // Seleziona tutti
+                }
+                renderFilterButtons();
+                renderTable();
+            };
+            
+            const isAllSelected = (selectedFilters.length === keys.length);
+            btnAll.innerHTML = `
+                <i class="${isAllSelected ? 'fa-solid fa-square-check' : 'fa-regular fa-square'} mr-1.5 text-sm"></i>
+                <span>Tutti</span>
+            `;
+            btnAll.className = isAllSelected 
+                ? "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm bg-slate-900 text-white flex items-center" 
+                : "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center";
+            container.appendChild(btnAll);
+
+            // Divisore grafico per pulizia d'interfaccia
+            const divider = document.createElement("div");
+            divider.className = "h-6 w-px bg-slate-200 mx-1 flex-shrink-0";
+            container.appendChild(divider);
+
+            // Pulsanti specifici per classe con toggle multiplo
+            keys.forEach(groupKey => {
+                const btn = document.createElement("button");
+                const alias = groupAliases[groupKey] || groupKey.replace("Griglia_", "");
+                const isSelected = selectedFilters.includes(groupKey);
+                
+                btn.onclick = () => {
+                    const idx = selectedFilters.indexOf(groupKey);
+                    if (idx > -1) {
+                        selectedFilters.splice(idx, 1);
+                    } else {
+                        selectedFilters.push(groupKey);
+                    }
+                    renderFilterButtons();
+                    renderTable();
+                };
+                
+                btn.innerHTML = `
+                    <i class="${isSelected ? 'fa-solid fa-check-square text-emerald-300' : 'fa-regular fa-square text-slate-400'} text-[13px] mr-1.5"></i>
+                    <span>${alias}</span>
+                `;
+                btn.className = isSelected 
+                    ? "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm bg-emerald-600 text-white flex items-center flex-shrink-0" 
+                    : "px-4 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center flex-shrink-0";
+                container.appendChild(btn);
+            });
+        }
+
+        // Unione di tutti gli studenti in un unico array ordinato
+        function getMergedList() {
+            let combined = [];
+            Object.keys(processedDataset).forEach(groupKey => {
+                processedDataset[groupKey].forEach(student => {
+                    combined.push({
+                        ...student,
+                        "Gruppo": groupKey.replace("Griglia_", "Gruppo_")
+                    });
+                });
+            });
+            return combined;
+        }
+
+        // Ritorna l'esatto sottoinsieme di dati filtrato a schermo combinando le classi selezionate
+        function getFilteredList() {
+            let list = [];
+            if (selectedFilters.length === 0) {
+                list = []; // Nessun gruppo selezionato
+            } else {
+                selectedFilters.forEach(groupKey => {
+                    if (processedDataset[groupKey]) {
+                        processedDataset[groupKey].forEach(student => {
+                            list.push({
+                                ...student,
+                                "Gruppo": groupKey.replace("Griglia_", "Gruppo_")
+                            });
+                        });
+                    }
+                });
+            }
+
+            if (searchQuery !== "") {
+                list = list.filter(student => 
+                    (student["Cognome"] && student["Cognome"].toLowerCase().includes(searchQuery)) || 
+                    (student["Nome"] && student["Nome"].toLowerCase().includes(searchQuery))
+                );
+            }
+
+            // Ordina la lista cumulativa prima per Classe, poi alfabeticamente per Cognome
+            list.sort((a, b) => {
+                const aliasA = groupAliases[a.Gruppo.replace("Gruppo_", "Griglia_")] || a.Gruppo;
+                const aliasB = groupAliases[b.Gruppo.replace("Gruppo_", "Griglia_")] || b.Gruppo;
+                if (aliasA !== aliasB) return aliasA.localeCompare(aliasB);
+                return (a.Cognome || "").localeCompare(b.Cognome || "");
+            });
+
+            return list;
+        }
+
+        function isFilteredActive() {
+            const totalKeys = Object.keys(processedDataset).length;
+            if (totalKeys === 0) return false;
+            return selectedFilters.length < totalKeys || searchQuery !== "";
+        }
+
+        // Gestore per lo switch della visualizzazione dell'andamento prove
+        function switchActiveMetric(metricKey) {
+            activePerformanceMetric = metricKey;
+            
+            const btnCentral = document.getElementById("metric-btn-central");
+            const btnPractical = document.getElementById("metric-btn-practical");
+            const btnOral = document.getElementById("metric-btn-oral");
+            
+            [btnCentral, btnPractical, btnOral].forEach(btn => {
+                btn.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-50";
+            });
+
+            if (metricKey === "central") {
+                btnCentral.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-900 text-white";
+            } else if (metricKey === "practical") {
+                btnPractical.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-900 text-white";
+            } else if (metricKey === "oral") {
+                btnOral.className = "px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm bg-slate-900 text-white";
+            }
+
+            renderPerformanceDashboard();
+        }
+
+        function renderPerformanceDashboard() {
+            const list = getFilteredList();
+            const container = document.getElementById("distribution-chart-container");
+            const feedbackText = document.getElementById("metric-feedback-text");
+            const feedbackClass = document.getElementById("metric-feedback-class");
+            const focusBox = document.getElementById("central-subjects-focus-box");
+            const focusContainer = document.getElementById("central-subjects-container");
+            
+            container.innerHTML = "";
+            focusContainer.innerHTML = "";
+
+            if (list.length === 0) {
+                container.innerHTML = `<div class="w-full text-center text-xs text-slate-400 py-10">Nessun dato disponibile</div>`;
+                feedbackText.innerText = "Nessuno studente in archivio per l'andamento d'esame. Carica o importa i CSV del SIUF.";
+                feedbackClass.innerText = "N/A";
+                focusBox.classList.add("hidden");
+                return;
+            }
+
+            // Identifica le classi selezionate per l'etichetta di sintesi
+            let activeLabel = "TUTTI";
+            if (selectedFilters.length < Object.keys(processedDataset).length) {
+                activeLabel = selectedFilters.map(k => groupAliases[k] || k.replace("Griglia_", "")).join(", ");
+            }
+            feedbackClass.innerText = activeLabel;
+
+            let values = [];
+            let keyName = "";
+            let scaleMax = 20;
+
+            if (activePerformanceMetric === "central") {
+                keyName = "Prova Centralizzata (Max 20)";
+                scaleMax = 20;
+                values = list.map(s => s["Prova Centralizzata"]).filter(v => v !== null && v !== undefined);
+                focusBox.classList.remove("hidden");
+                
+                // Compila l'analisi live di dettaglio delle discipline scritte per la Prova Centralizzata
+                const itaVals = list.map(s => s["Italiano"]).filter(v => v !== null);
+                const matVals = list.map(s => s["Matematica"]).filter(v => v !== null);
+                const ingVals = list.map(s => s["Inglese"]).filter(v => v !== null);
+
+                const subjectsData = [
+                    { name: "Italiano", max: 8, vals: itaVals, color: "bg-blue-600", text: "text-blue-700" },
+                    { name: "Matematica", max: 7, vals: matVals, color: "bg-amber-600", text: "text-amber-700" },
+                    { name: "Inglese", max: 5, vals: ingVals, color: "bg-emerald-600", text: "text-emerald-700" }
+                ];
+
+                subjectsData.forEach(sub => {
+                    const subCount = sub.vals.length;
+                    const subAvg = subCount > 0 ? (sub.vals.reduce((a, b) => a + b, 0) / subCount) : 0;
+                    const subPct = sub.max > 0 ? (subAvg / sub.max) * 100 : 0;
+                    const subMax = subCount > 0 ? Math.max(...sub.vals) : 0;
+                    const subMin = subCount > 0 ? Math.min(...sub.vals) : 0;
+
+                    const subCard = document.createElement("div");
+                    subCard.className = "p-4 bg-slate-50 border border-slate-200/80 rounded-xl";
+                    subCard.innerHTML = `
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-xs font-bold text-slate-700 uppercase tracking-wide">${sub.name}</span>
+                            <span class="text-xs font-black ${sub.text}">${subAvg.toFixed(2)} / ${sub.max}</span>
+                        </div>
+                        <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mb-2.5">
+                            <div class="${sub.color} h-full rounded-full transition-all duration-500" style="width: ${subPct}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] text-slate-400 font-medium">
+                            <span>Max: <strong>${subMax.toFixed(2)}</strong></span>
+                            <span>Min: <strong>${subMin.toFixed(2)}</strong></span>
+                            <span>Risposte: <strong>${subCount}</strong></span>
+                        </div>
+                    `;
+                    focusContainer.appendChild(subCard);
+                });
+
+            } else {
+                keyName = "Prova Pratica (Max 30)";
+                scaleMax = 30;
+                if (activePerformanceMetric === "oral") {
+                    keyName = "Colloquio Orale (Max 10)";
+                    scaleMax = 10;
+                }
+                focusBox.classList.add("hidden");
+                values = list.map(s => s[activePerformanceMetric === "practical" ? "Profess." : "Colloquio"]).filter(v => v !== null && v !== "");
+            }
+
+            const totalStudents = list.length;
+            const completedCount = values.length;
+            const completionPercentage = totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0;
+
+            document.getElementById("metric-completion").innerText = `${completionPercentage}%`;
+            document.getElementById("metric-completion-ratio").innerText = `(${completedCount} su ${totalStudents} studenti)`;
+            document.getElementById("metric-completion-bar").style.width = `${completionPercentage}%`;
+
+            if (completedCount === 0) {
+                container.innerHTML = `<div class="w-full text-center text-xs text-slate-400 py-10">Nessun voto inserito per questa prova</div>`;
+                feedbackText.innerText = `Nessuna valutazione registrata per la prova "${keyName}". Verifica la completezza delle fonti caricate o dei file SIUF emessi.`;
+                document.getElementById("metric-avg").innerText = "0.00";
+                document.getElementById("metric-max").innerText = "0.00";
+                document.getElementById("metric-min").innerText = "0.00";
+                return;
+            }
+
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = parseFloat((sum / completedCount).toFixed(2));
+            const maxVal = Math.max(...values);
+            const minVal = Math.min(...values);
+
+            document.getElementById("metric-avg").innerText = avg.toFixed(2);
+            document.getElementById("metric-max").innerText = maxVal.toFixed(2);
+            document.getElementById("metric-min").innerText = minVal.toFixed(2);
+
+            let labelInsuff, labelSuff, labelBuono, labelEccell;
+            if (activePerformanceMetric === "central") {
+                labelInsuff = "Insuff. (< 12)";
+                labelSuff = "Suff. (12-14.4)";
+                labelBuono = "Buono (14.4-17.6)";
+                labelEccell = "Eccell. (>= 17.6)";
+            } else if (activePerformanceMetric === "practical") {
+                labelInsuff = "Insuff. (< 18)";
+                labelSuff = "Suff. (18-21.6)";
+                labelBuono = "Buono (21.6-26.4)";
+                labelEccell = "Eccell. (>= 26.4)";
+            } else if (activePerformanceMetric === "oral") {
+                labelInsuff = "Insuff. (< 6)";
+                labelSuff = "Suff. (6-7.2)";
+                labelBuono = "Buono (7.2-8.8)";
+                labelEccell = "Eccell. (>= 8.8)";
+            }
+            document.getElementById("legend-insuff").innerText = labelInsuff;
+            document.getElementById("legend-suff").innerText = labelSuff;
+            document.getElementById("legend-buono").innerText = labelBuono;
+            document.getElementById("legend-eccell").innerText = labelEccell;
+
+            let bandInsuff = 0;   
+            let bandSuff = 0;     
+            let bandBuono = 0;    
+            let bandEccell = 0;   
+
+            values.forEach(v => {
+                const ratio = v / scaleMax;
+                if (ratio < 0.6) bandInsuff++;
+                else if (ratio < 0.72) bandSuff++;
+                else if (ratio < 0.88) bandBuono++;
+                else bandEccell++;
+            });
+
+            const distribution = [bandInsuff, bandSuff, bandBuono, bandEccell];
+            const maxBandCount = Math.max(...distribution, 1);
+
+            distribution.forEach((count, idx) => {
+                const barHeight = Math.max(5, (count / maxBandCount) * 100); 
+                const barColor = idx === 0 ? "bg-rose-500" : (idx === 1 ? "bg-amber-500" : (idx === 2 ? "bg-indigo-500" : "bg-emerald-500"));
+                
+                const colEl = document.createElement("div");
+                colEl.className = "flex flex-col items-center w-1/4 group relative";
+                colEl.innerHTML = `
+                    <span class="absolute -top-7 bg-slate-900 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20">
+                        ${count} student${count === 1 ? 'e' : 'i'} (${Math.round((count/completedCount)*100)}%)
+                    </span>
+                    <div class="w-10 ${barColor} rounded-t-md transition-all duration-500" style="height: ${barHeight}%"></div>
+                    <span class="text-xs font-bold text-slate-700 mt-1">${count}</span>
+                `;
+                container.appendChild(colEl);
+            });
+
+            let feedback = "";
+            const ratioAvg = avg / scaleMax;
+
+            if (ratioAvg >= 0.85) {
+                feedback = `Prestazione eccellente! Gli studenti per la prova "${keyName}" registrano un livello medio straordinario (${avg.toFixed(2)} su ${scaleMax}). La quasi totalità del gruppo si colloca nella fascia di eccellenza.`;
+            } else if (ratioAvg >= 0.72) {
+                feedback = `Ottimo andamento complessivo. La prova "${keyName}" mostra una solida preparazione didattica con una media di ${avg.toFixed(2)} su ${scaleMax}. Si riscontra un'ottima omogeneità senza particolari scompensi.`;
+            } else if (ratioAvg >= 0.6) {
+                feedback = `La valutazione media per la prova "${keyName}" è pienamente sufficiente (${avg.toFixed(2)} su ${scaleMax}). Vi sono buone risposte, ma permangono margini di miglioramento su specifiche carenze individuali.`;
+            } else {
+                feedback = `Attenzione: l'andamento medio riscontrato per la prova "${keyName}" è insufficiente (${avg.toFixed(2)} su ${scaleMax}). Si consiglia di monitorare le singole schede d'esame per attivare azioni di supporto.`;
+            }
+
+            feedbackText.innerText = feedback;
+        }
+
+        function calculateStats() {
+            const currentList = getFilteredList();
+            const total = currentList.length;
+            
+            if (total === 0) {
+                document.getElementById("stat-total-students").innerText = 0;
+                document.getElementById("stat-avg-admission").innerText = "0.0";
+                document.getElementById("stat-avg-central").innerText = "0.00";
+                document.getElementById("stat-avg-final").innerText = "0.00";
+                return;
+            }
+
+            const avgAdmission = (currentList.reduce((acc, curr) => acc + (curr["Punteggio Ammissione"] || 0), 0) / total).toFixed(1);
+            const avgCentral = (currentList.reduce((acc, curr) => acc + (curr["Prova Centralizzata"] || 0), 0) / total).toFixed(2);
+            const avgFinal = (currentList.reduce((acc, curr) => acc + (curr["Punteggio Finale"] || 0), 0) / total).toFixed(2);
+
+            document.getElementById("stat-total-students").innerText = total;
+            document.getElementById("stat-avg-admission").innerText = avgAdmission;
+            document.getElementById("stat-avg-central").innerText = avgCentral;
+            document.getElementById("stat-avg-final").innerText = avgFinal;
+        }
+
+        // Filtro per classe multiplo o singolo
+        function setFilter(filter) {
+            if (filter === 'ALL') {
+                selectedFilters = Object.keys(processedDataset);
+            } else {
+                selectedFilters = [filter];
+            }
+            renderFilterButtons();
+            renderTable();
+        }
+
+        function filterData() {
+            searchQuery = document.getElementById("search-input").value.toLowerCase().trim();
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById("table-body");
+            const emptyState = document.getElementById("empty-state");
+            tbody.innerHTML = "";
+
+            const list = getFilteredList();
+            const totalInSystem = getMergedList().length;
+
+            document.getElementById("visible-count").innerText = list.length;
+            document.getElementById("total-count").innerText = totalInSystem;
+
+            const dwnText = document.getElementById("download-btn-text");
+            const dwnBtn = document.getElementById("download-btn");
+            const filterBadge = document.getElementById("active-filter-badge");
+
+            if (isFilteredActive()) {
+                dwnText.innerText = "Scarica Dati Filtrati (.xlsx)";
+                dwnBtn.className = "bg-amber-600 hover:bg-amber-700 text-white font-semibold px-5 py-3 rounded-xl shadow-md shadow-amber-600/10 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2";
+                filterBadge.innerText = "Modalità: Selezione Filtrata";
+                filterBadge.className = "bg-amber-50 text-amber-700 font-semibold px-2 py-1 rounded";
+            } else {
+                dwnText.innerText = "Scarica File Excel (.xlsx)";
+                dwnBtn.className = "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-3 rounded-xl shadow-md shadow-emerald-600/10 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2";
+                filterBadge.innerText = "Modalità: Tutto";
+                filterBadge.className = "bg-emerald-50 text-emerald-700 font-semibold px-2 py-1 rounded";
+            }
+
+            if (list.length === 0) {
+                emptyState.classList.remove("hidden");
+                tbody.closest('table').classList.add('hidden');
+                calculateStats();
+                renderPerformanceDashboard();
+                return;
+            } else {
+                emptyState.classList.add("hidden");
+                tbody.closest('table').classList.remove('hidden');
+            }
+
+            list.forEach(student => {
+                const tr = document.createElement("tr");
+                tr.className = "hover:bg-slate-50/50 transition-colors";
+                
+                let groupBadgeClass = "bg-slate-100 text-slate-600";
+                if (student["Gruppo"].includes("264900")) groupBadgeClass = "bg-blue-50 text-blue-600 border border-blue-100";
+                else if (student["Gruppo"].includes("235010")) groupBadgeClass = "bg-amber-50 text-amber-600 border border-amber-100";
+                else if (student["Gruppo"].includes("201716")) groupBadgeClass = "bg-indigo-50 text-indigo-600 border border-indigo-100";
+                else if (student["Gruppo"].includes("585508")) groupBadgeClass = "bg-purple-50 text-purple-600 border border-purple-100";
+                else groupBadgeClass = "bg-emerald-50 text-emerald-600 border border-emerald-100";
+
+                const aliasKey = student["Gruppo"].replace("Gruppo_", "Griglia_");
+                const currentAlias = groupAliases[aliasKey] || student["Gruppo"].replace("Gruppo_", "");
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 font-medium text-slate-500 text-center">#${student["Id"]}</td>
+                    <td class="py-3 px-4 font-bold text-slate-900">${student["Cognome"]}</td>
+                    <td class="py-3 px-4 text-slate-700">${student["Nome"]}</td>
+                    <td class="py-3 px-2 text-center font-semibold text-slate-800">${student["Punteggio Ammissione"]}</td>
+                    <td class="py-3 px-2 text-center text-slate-600">${student["Italiano"] !== null ? student["Italiano"].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-2 text-center text-slate-600">${student["Matematica"] !== null ? student["Matematica"].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-2 text-center text-slate-600">${student["Inglese"] !== null ? student["Inglese"].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-3 text-center font-bold text-indigo-700 bg-indigo-50/20 border-x border-slate-150">${student["Prova Centralizzata"].toFixed(2)}</td>
+                    <td class="py-3 px-3 text-center text-slate-600">${student["Profess."] !== null ? student["Profess."].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-3 text-center text-slate-600">${student["Colloquio"] !== null ? student["Colloquio"].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-3 text-center text-slate-600">${student["Bonus Integrativo"] !== null ? student["Bonus Integrativo"].toFixed(2) : '-'}</td>
+                    <td class="py-3 px-4 text-center font-bold text-emerald-700 bg-emerald-50/20 border-l border-slate-150">
+                        ${student["Punteggio Finale"]}
+                        ${student["IsComplete"] ? '<span class="text-[9px] text-emerald-600 block font-semibold leading-none mt-0.5" title="Tutte le valutazioni inserite: arrotondato all\'intero">(Arr.)</span>' : ''}
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <span class="inline-flex px-2 py-1 rounded text-xs font-semibold ${groupBadgeClass}">
+                            ${currentAlias}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            calculateStats();
+            renderPerformanceDashboard();
+        }
+
+        // Mappa i dati escludendo totalmente la colonna "Origine/Gruppo" come richiesto
+        function formatDataForExcel(list) {
+            return list.map(student => {
+                return {
+                    "ID Studente": student["Id"],
+                    "Cognome": student["Cognome"],
+                    "Nome": student["Nome"],
+                    "Punteggio Ammissione": student["Punteggio Ammissione"],
+                    "Italiano": student["Italiano"],
+                    "Matematica": student["Matematica"],
+                    "Inglese": student["Inglese"],
+                    "Prova Centralizzata (A)": student["Prova Centralizzata"],
+                    "Profess. (B)": student["Profess."],
+                    "Colloquio (C)": student["Colloquio"],
+                    "Bonus Integrativo (D)": student["Bonus Integrativo"],
+                    "Punteggio Finale (Ammiss.+A+B+C+D)": student["Punteggio Finale"]
+                };
+            });
+        }
+
+        // Gestione del download dell'Excel (Totale o Filtrato)
+        function downloadExcel() {
+            try {
+                const wb = XLSX.utils.book_new();
+
+                if (isFilteredActive()) {
+                    // SCARICA SOLO I DATI FILTRATI (Colonna Origine Esclusa)
+                    const listFiltered = getFilteredList();
+                    if (listFiltered.length === 0) {
+                        showToast("Nessun dato filtrato disponibile per il download.", "error");
+                        return;
+                    }
+                    const formatted = formatDataForExcel(listFiltered);
+                    
+                    const ws = XLSX.utils.json_to_sheet(formatted);
+                    ws['!cols'] = getColsWidth(formatted);
+                    XLSX.utils.book_append_sheet(wb, ws, "Dati Filtrati");
+                    
+                    XLSX.writeFile(wb, "Studenti_Selezione_Filtrata.xlsx");
+                    showToast("Esportazione della selezione filtrata completata con successo!", "success");
+                } else {
+                    // SCARICA IL PACCHETTO COMPLETO MULTI-SCHEDA (Tutti i dati, colonna Origine Esclusa)
+                    const listAll = getMergedList();
+                    if (listAll.length === 0) {
+                        showToast("Nessun dato presente in archivio da esportare.", "error");
+                        return;
+                    }
+
+                    const formattedAll = formatDataForExcel(listAll);
+                    const wsAll = XLSX.utils.json_to_sheet(formattedAll);
+                    wsAll['!cols'] = getColsWidth(formattedAll);
+                    XLSX.utils.book_append_sheet(wb, wsAll, "Tutti gli Studenti");
+
+                    // Fogli separati dinamici per ogni file SIUF attivo, usando gli alias/nomi classi inseriti!
+                    Object.keys(processedDataset).sort().forEach(groupKey => {
+                        const gData = processedDataset[groupKey];
+                        const formattedG = formatDataForExcel(gData);
+                        const wsG = XLSX.utils.json_to_sheet(formattedG);
+                        wsG['!cols'] = getColsWidth(formattedG);
+                        
+                        const alias = groupAliases[groupKey] || groupKey.replace("Griglia_", "");
+                        const cleanSheetName = alias.replace(/[\\\/\?\*\:\[\]]/g, "_").substring(0, 31);
+                        XLSX.utils.book_append_sheet(wb, wsG, cleanSheetName);
+                    });
+
+                    XLSX.writeFile(wb, "Studenti_SIUF_Completo.xlsx");
+                    showToast("Esportazione completa (multi-foglio) eseguita correttamente!", "success");
+                }
+            } catch (err) {
+                console.error("Errore esportazione Excel: ", err);
+                showToast("Errore di esportazione in Excel", "error");
+            }
+        }
+
+        function printReport() {
+            const printSection = document.getElementById("print-section");
+            const list = getFilteredList();
+            
+            if (list.length === 0) {
+                showToast("Carica o seleziona degli studenti prima di lanciare la stampa.", "error");
+                return;
+            }
+
+            let filterDesc = "";
+            let mainHeaderTitle = "Griglia di Valutazione e Punteggi Finali";
+
+            if (selectedFilters.length < Object.keys(processedDataset).length) {
+                const activeClasses = selectedFilters.map(k => groupAliases[k] || k.replace("Griglia_", ""));
+                filterDesc = `Classi: ${activeClasses.join(", ")}`;
+                mainHeaderTitle = `Griglia di Valutazione - ${filterDesc}`;
+            } else {
+                const activeClasses = Object.keys(processedDataset).map(k => groupAliases[k] || k.replace("Griglia_", ""));
+                filterDesc = activeClasses.length > 0 ? "Classi incluse: " + activeClasses.join(", ") : "Tutti gli studenti";
+                mainHeaderTitle = "Griglia di Valutazione e Punteggi Finali (Cumulativo)";
+            }
+
+            if (searchQuery) {
+                filterDesc += ` (Filtro ricerca: "${searchQuery}")`;
+            }
+
+            const dateStr = new Date().toLocaleDateString('it-IT', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            // Scelta della densità per fare entrare tutto in una pagina landscape
+            let spacingClass = "p-1.5 text-xs";
+            if (list.length > 25) {
+                spacingClass = "p-1 text-[10px]";
+            } else if (list.length > 15) {
+                spacingClass = "p-1.5 text-[11px]";
+            }
+
+            let rowsHtml = "";
+            list.forEach(student => {
+                rowsHtml += `
+                    <tr class="border-b border-slate-300">
+                        <td class="${spacingClass} text-center font-mono font-medium">#${student["Id"]}</td>
+                        <td class="${spacingClass} font-bold uppercase tracking-tight">${student["Cognome"]}</td>
+                        <td class="${spacingClass} font-medium">${student["Nome"]}</td>
+                        <td class="${spacingClass} text-center font-semibold">${student["Punteggio Ammissione"]}</td>
+                        <td class="${spacingClass} text-center">${student["Italiano"] !== null ? student["Italiano"].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center">${student["Matematica"] !== null ? student["Matematica"].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center">${student["Inglese"] !== null ? student["Inglese"].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center font-bold bg-slate-100/70 border-x border-slate-300">${student["Prova Centralizzata"].toFixed(2)}</td>
+                        <td class="${spacingClass} text-center">${student["Profess."] !== null ? student["Profess."].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center">${student["Colloquio"] !== null ? student["Colloquio"].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center">${student["Bonus Integrativo"] !== null ? student["Bonus Integrativo"].toFixed(2) : '-'}</td>
+                        <td class="${spacingClass} text-center font-bold bg-emerald-50 border-l border-slate-300 text-emerald-900">
+                            ${student["Punteggio Finale"]}
+                            ${student["IsComplete"] ? ' <span class="text-[8px] font-normal text-emerald-700">(Arr.)</span>' : ''}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            printSection.className = "show-preview";
+            printSection.innerHTML = `
+                <!-- Barra superiore interattiva (Nascondibile alla stampa fisica) -->
+                <div class="no-print max-w-[297mm] mx-auto mb-6 bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center text-white text-lg">
+                            <i class="fa-solid fa-file-pdf"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-sm">Anteprima di Stampa Registri (Orizzontale)</h4>
+                            <p class="text-xs text-slate-300">Layout certificato per l'impaginazione in singola pagina PDF</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+                            <i class="fa-solid fa-print"></i> Apri Dialogo di Stampa
+                        </button>
+                        <button onclick="closePrintPreview()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+                            <i class="fa-solid fa-circle-xmark"></i> Chiudi Anteprima
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Struttura della scheda di carta reale -->
+                <div class="paper-sheet text-slate-800">
+                    <div class="flex items-center justify-between border-b-2 border-slate-800 pb-4 mb-4">
+                        <div class="flex items-center gap-3">
+                            <img src="https://www.formazionemantova.it/moodlemn/pluginfile.php/1/theme_academi/logo/1777986163/forma100.png" onerror="this.style.display='none'" class="h-10 w-auto object-contain">
+                            <div>
+                                <h2 class="text-sm font-black uppercase tracking-wider text-slate-900">FORMAZIONE MANTOVA - FOR.MA.</h2>
+                                <p class="text-[9px] text-slate-500 font-semibold">Azienda Speciale della Provincia di Mantova • Esami SIUF</p>
+                            </div>
+                        </div>
+                        <div class="text-right text-[10px] text-slate-700 leading-tight">
+                            <p><strong>Generato il:</strong> ${dateStr}</p>
+                            <p><strong>Riferimento:</strong> <span class="font-mono bg-slate-100 px-1 rounded font-bold text-slate-900">${filterDesc}</span></p>
+                            <p><strong>Studenti in Elenco:</strong> <span class="font-semibold">${list.length}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-5">
+                        <h1 class="text-base font-extrabold uppercase tracking-widest text-slate-850">${mainHeaderTitle}</h1>
+                        <p class="text-[10px] text-slate-400">Sommario sintetico delle prove d'esame centralizzate e dei crediti di ammissione</p>
+                    </div>
+
+                    <table class="w-full text-left border-collapse border border-slate-400">
+                        <thead>
+                            <tr class="bg-slate-100 border-b border-slate-400 text-slate-700 text-[10px] font-bold uppercase">
+                                <th class="p-1 border border-slate-400 text-center">ID</th>
+                                <th class="p-1 border border-slate-400">Cognome</th>
+                                <th class="p-1 border border-slate-400">Nome</th>
+                                <th class="p-1 border border-slate-400 text-center">Ammiss.</th>
+                                <th class="p-1 border border-slate-400 text-center">Ita</th>
+                                <th class="p-1 border border-slate-400 text-center">Mat</th>
+                                <th class="p-1 border border-slate-400 text-center">Ing</th>
+                                <th class="p-1 border border-slate-400 text-center bg-slate-200">Prova Centr.</th>
+                                <th class="p-1 border border-slate-400 text-center">Profess.</th>
+                                <th class="p-1 border border-slate-400 text-center">Colloquio</th>
+                                <th class="p-1 border border-slate-400 text-center">Bonus Int.</th>
+                                <th class="p-1 border border-slate-400 text-center bg-emerald-100/70">Punt. Finale</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div class="mt-8 grid grid-cols-3 gap-6 pt-4 text-[10px] text-slate-600 border-t border-dashed border-slate-300">
+                        <div>
+                            <h4 class="font-bold uppercase text-slate-800 text-[9px] mb-1">Criteri di calcolo:</h4>
+                            <p class="leading-relaxed text-[9px]">
+                                * <strong>Prova Centralizzata:</strong> Somma di Italiano, Matematica ed Inglese.<br>
+                                * <strong>Punteggio Finale (Arrotondato all'intero se completo):</strong> Somma di Ammissione, Prova Centralizzata, Profess., Colloquio e Bonus Integrativo.
+                            </p>
+                        </div>
+                        <div class="text-center">
+                            <p class="mb-8 font-medium">Il Responsabile della Segreteria</p>
+                            <div class="border-b border-slate-400 w-2/3 mx-auto"></div>
+                            <p class="text-[8px] text-slate-400 mt-1">Timbro e Firma Ufficiale</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="mb-8 font-medium">Il Dirigente Scolastico / Presidente d'Esame</p>
+                            <div class="border-b border-slate-400 w-2/3 mx-auto"></div>
+                            <p class="text-[8px] text-slate-400 mt-1">Firma sostituita a mezzo stampa ai sensi di legge</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById("interactive-app").style.display = "none";
+
+            try {
+                window.print();
+            } catch (e) {
+                console.warn("La chiamata diretta window.print() è stata bloccata. Usa la combinazione Ctrl+P o Cmd+P.");
+            }
+        }
+
+        function printSintesiReport() {
+            const printSection = document.getElementById("print-section");
+            const list = getFilteredList();
+
+            if (list.length === 0) {
+                showToast("Carica o seleziona degli studenti prima di lanciare la sintesi.", "error");
+                return;
+            }
+
+            let classLabel = "TUTTI I GRUPPI";
+            if (selectedFilters.length < Object.keys(processedDataset).length) {
+                classLabel = selectedFilters.map(k => groupAliases[k] || k.replace("Griglia_", "")).join(", ");
+            }
+
+            const dateStr = new Date().toLocaleDateString('it-IT', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+
+            // Calcolo medie discipline scritte
+            const itaVals = list.map(s => s["Italiano"]).filter(v => v !== null);
+            const matVals = list.map(s => s["Matematica"]).filter(v => v !== null);
+            const ingVals = list.map(s => s["Inglese"]).filter(v => v !== null);
+
+            const getStatsForSub = (vals, maxVal) => {
+                const count = vals.length;
+                const avg = count > 0 ? (vals.reduce((a,b)=>a+b,0)/count) : 0;
+                const max = count > 0 ? Math.max(...vals) : 0;
+                const min = count > 0 ? Math.min(...vals) : 0;
+                // Calcolo tasso di sufficienza parametrato al 60% del massimo
+                const suffLimit = maxVal * 0.6;
+                const suffCount = vals.filter(v => v >= suffLimit).length;
+                const suffPct = count > 0 ? Math.round((suffCount / count) * 100) : 0;
+                return { count, avg, max, min, suffPct };
+            };
+
+            const statsIta = getStatsForSub(itaVals, 8);
+            const statsMat = getStatsForSub(matVals, 7);
+            const statsIng = getStatsForSub(ingVals, 5);
+
+            // Calcolo medie prove generali
+            const centrVals = list.map(s => s["Prova Centralizzata"]).filter(v => v !== null && v !== undefined);
+            const statsCentr = getStatsForSub(centrVals, 20);
+
+            const practVals = list.map(s => s["Profess."]).filter(v => v !== null);
+            const statsPract = getStatsForSub(practVals, 30);
+
+            const oralVals = list.map(s => s["Colloquio"]).filter(v => v !== null);
+            const statsOral = getStatsForSub(oralVals, 10);
+
+            const avgAdmission = (list.reduce((acc, curr) => acc + (curr["Punteggio Ammissione"] || 0), 0) / list.length).toFixed(1);
+            const avgFinal = (list.reduce((acc, curr) => acc + (curr["Punteggio Finale"] || 0), 0) / list.length).toFixed(2);
+
+            // Generatore giudizio pedagogico sintetico per le tre scritte
+            let feedbackScritte = "";
+            const avgPctScritte = statsCentr.avg / 20;
+            if (avgPctScritte >= 0.75) {
+                feedbackScritte = "La preparazione linguistica e logico-matematica aggregata risulta di alto profilo. Si denota eccellente fluidità di argomentazione e padronanza d'analisi.";
+            } else if (avgPctScritte >= 0.6) {
+                feedbackScritte = "Le discipline scritte attestano un andamento complessivamente idoneo, con buone basi ed uniformità didattica, seppur con lievi differenze individuali.";
+            } else {
+                feedbackScritte = "Si evidenziano criticità diffuse e lacune su una o più discipline della prova scritta. Si consiglia un monitoraggio selettivo dei percorsi di recupero.";
+            }
+
+            printSection.className = "show-preview-portrait";
+            printSection.innerHTML = `
+                <!-- Barra superiore interattiva per l'anteprima verticale -->
+                <div class="no-print max-w-[210mm] mx-auto mb-6 bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center text-white text-lg">
+                            <i class="fa-solid fa-file-invoice"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-sm">Anteprima Relazione di Sintesi (Verticale)</h4>
+                            <p class="text-xs text-slate-300">Layout clinico-didattico certificato A4 Portrait</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+                            <i class="fa-solid fa-print"></i> Apri Stampa
+                        </button>
+                        <button onclick="closePrintPreview()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all">
+                            <i class="fa-solid fa-circle-xmark"></i> Chiudi
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scheda cartacea A4 Portrait -->
+                <div class="paper-sheet-portrait text-slate-800 text-xs leading-relaxed">
+                    <div class="flex items-center justify-between border-b-2 border-slate-800 pb-4 mb-6">
+                        <div class="flex items-center gap-3">
+                            <img src="https://www.formazionemantova.it/moodlemn/pluginfile.php/1/theme_academi/logo/1777986163/forma100.png" onerror="this.style.display='none'" class="h-10 w-auto object-contain">
+                            <div>
+                                <h2 class="text-sm font-black uppercase tracking-wider text-slate-900">FORMAZIONE MANTOVA - FOR.MA.</h2>
+                                <p class="text-[9px] text-slate-500 font-semibold">Azienda Speciale della Provincia di Mantova • Gestione Esami</p>
+                            </div>
+                        </div>
+                        <div class="text-right text-[10px] text-slate-600">
+                            <p><strong>Rapporto del:</strong> ${dateStr}</p>
+                            <p><strong>Classe/Gruppo:</strong> <span class="font-bold uppercase">${classLabel}</span></p>
+                        </div>
+                    </div>
+
+                    <div class="text-center mb-6">
+                        <h1 class="text-base font-black uppercase tracking-widest text-slate-900">RELAZIONE CLINICO-DIDATTICA E SINTESI ESAMI</h1>
+                        <p class="text-[10px] text-slate-400 font-semibold uppercase mt-0.5">Rapporto aggregato delle prove d'esame e distribuzione delle valutazioni</p>
+                    </div>
+
+                    <!-- Sezione 1: Quadro Generale -->
+                    <div class="mb-5">
+                        <h3 class="text-xs font-extrabold uppercase border-b border-slate-300 pb-1 mb-2 text-slate-900">1. Quadro Statistico Generale</h3>
+                        <p class="mb-2.5">
+                            La presente relazione illustra in forma aggregata l'andamento delle prove d'esame sostenute dagli alunni appartenenti al gruppo classe <strong class="uppercase">${classLabel}</strong>. Il gruppo è composto da un totale di <strong>${list.length}</strong> studenti iscritti.
+                        </p>
+                        <div class="grid grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <div class="text-center border-r border-slate-200">
+                                <span class="text-[9px] text-slate-400 font-bold uppercase block">Media Crediti Ammissione</span>
+                                <span class="text-sm font-black text-slate-800">${avgAdmission}</span>
+                            </div>
+                            <div class="text-center border-r border-slate-200">
+                                <span class="text-[9px] text-slate-400 font-bold uppercase block">Media Prova Scritta (Centr.)</span>
+                                <span class="text-sm font-black text-indigo-700">${statsCentr.avg.toFixed(2)}</span>
+                            </div>
+                            <div class="text-center">
+                                <span class="text-[9px] text-slate-400 font-bold uppercase block">Media Punteggio Finale</span>
+                                <span class="text-sm font-black text-emerald-700">${avgFinal}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sezione 2: Prova Scritta Centralizzata -->
+                    <div class="mb-5">
+                        <h3 class="text-xs font-extrabold uppercase border-b border-slate-300 pb-1 mb-2 text-slate-900">2. Analisi Prova Centralizzata (Ventesimi)</h3>
+                        <p class="mb-3">
+                            La prova centralizzata, strutturata su una scala massima di <strong>20 punti</strong>, ha registrato una media di classe pari a <strong>${statsCentr.avg.toFixed(2)}</strong>, con una valutazione di picco pari a <strong>${statsCentr.max.toFixed(2)}</strong> e un minimo di <strong>${statsCentr.min.toFixed(2)}</strong>. Il tasso di sufficienza (>= 12 punti) si attesta al <strong>${statsCentr.suffPct}%</strong>.
+                        </p>
+
+                        <!-- SOTTO SEZIONE: VALUTAZIONE SINGOLE DISCIPLINE -->
+                        <div class="bg-indigo-50/40 p-3 rounded-lg border border-indigo-100 mb-3">
+                            <h4 class="text-[10px] font-bold text-indigo-900 uppercase tracking-wide mb-2 flex items-center gap-1">
+                                <i class="fa-solid fa-calculator"></i>
+                                2.1 Focus Diagnostico sulle Discipline Scritte
+                            </h4>
+                            <div class="grid grid-cols-3 gap-3 text-[10px]">
+                                <div class="bg-white p-2 rounded border border-indigo-100">
+                                    <div class="font-bold text-slate-800 mb-1">ITALIANO (Max 8)</div>
+                                    <div class="w-full bg-slate-200 h-1 rounded-full overflow-hidden mb-1.5">
+                                        <div class="bg-blue-600 h-full rounded-full" style="width: ${(statsIta.avg / 8) * 100}%"></div>
+                                    </div>
+                                    <p class="text-slate-600 mb-1">Media: <strong>${statsIta.avg.toFixed(2)}</strong></p>
+                                    <p class="text-slate-600 mb-1">Sufficienza (>=4.8): <strong>${statsIta.suffPct}%</strong></p>
+                                    <p class="text-[9px] text-slate-400">Intervallo: ${statsIta.min.toFixed(1)} - ${statsIta.max.toFixed(1)}</p>
+                                </div>
+                                <div class="bg-white p-2 rounded border border-indigo-100">
+                                    <div class="font-bold text-slate-800 mb-1">MATEMATICA (Max 7)</div>
+                                    <div class="w-full bg-slate-200 h-1 rounded-full overflow-hidden mb-1.5">
+                                        <div class="bg-amber-600 h-full rounded-full" style="width: ${(statsMat.avg / 7) * 100}%"></div>
+                                    </div>
+                                    <p class="text-slate-600 mb-1">Media: <strong>${statsMat.avg.toFixed(2)}</strong></p>
+                                    <p class="text-slate-600 mb-1">Sufficienza (>=4.2): <strong>${statsMat.suffPct}%</strong></p>
+                                    <p class="text-[9px] text-slate-400">Intervallo: ${statsMat.min.toFixed(1)} - ${statsMat.max.toFixed(1)}</p>
+                                </div>
+                                <div class="bg-white p-2 rounded border border-indigo-100">
+                                    <div class="font-bold text-slate-800 mb-1">INGLESE (Max 5)</div>
+                                    <div class="w-full bg-slate-200 h-1 rounded-full overflow-hidden mb-1.5">
+                                        <div class="bg-emerald-600 h-full rounded-full" style="width: ${(statsIng.avg / 5) * 100}%"></div>
+                                    </div>
+                                    <p class="text-slate-600 mb-1">Media: <strong>${statsIng.avg.toFixed(2)}</strong></p>
+                                    <p class="text-slate-600 mb-1">Sufficienza (>=3.0): <strong>${statsIng.suffPct}%</strong></p>
+                                    <p class="text-[9px] text-slate-400">Intervallo: ${statsIng.min.toFixed(1)} - ${statsIng.max.toFixed(1)}</p>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-indigo-950/80 italic mt-2.5">
+                                * Nota didattica: ${feedbackScritte}
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Sezione 3: Prova Pratica e Colloquio -->
+                    <div class="mb-5">
+                        <h3 class="text-xs font-extrabold uppercase border-b border-slate-300 pb-1 mb-2 text-slate-900">3. Analisi Prova Pratica e Colloquio Orale</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                <h4 class="font-bold text-slate-800 uppercase text-[10px] mb-1.5 border-b border-slate-200 pb-0.5">Prova Pratica (Max 30)</h4>
+                                <ul class="space-y-1 text-[10px] text-slate-600">
+                                    <li>Valutazione Media: <strong>${statsPract.avg.toFixed(2)}</strong></li>
+                                    <li>Valutazione Picco: <strong>${statsPract.max.toFixed(2)}</strong></li>
+                                    <li>Valutazione Minima: <strong>${statsPract.min.toFixed(2)}</strong></li>
+                                    <li>Percentuale Idoneità (>=18): <strong>${statsPract.suffPct}%</strong></li>
+                                </ul>
+                            </div>
+                            <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                <h4 class="font-bold text-slate-800 uppercase text-[10px] mb-1.5 border-b border-slate-200 pb-0.5">Colloquio Orale (Max 10)</h4>
+                                <ul class="space-y-1 text-[10px] text-slate-600">
+                                    <li>Valutazione Media: <strong>${statsOral.avg.toFixed(2)}</strong></li>
+                                    <li>Valutazione Picco: <strong>${statsOral.max.toFixed(2)}</strong></li>
+                                    <li>Valutazione Minima: <strong>${statsOral.min.toFixed(2)}</strong></li>
+                                    <li>Percentuale Idoneità (>=6): <strong>${statsOral.suffPct}%</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sezione 4: Spazi Firme Istituzionali -->
+                    <div class="mt-12 pt-6 border-t border-slate-300 grid grid-cols-2 gap-12 text-center text-[10px] text-slate-600">
+                        <div>
+                            <p class="mb-12 font-semibold">Il Direttore della Didattica / Coordinatore</p>
+                            <div class="border-b border-slate-400 w-3/4 mx-auto"></div>
+                            <p class="text-[9px] text-slate-400 mt-1.5">Firma Autografa</p>
+                        </div>
+                        <div>
+                            <p class="mb-12 font-semibold">Il Dirigente Scolastico / Presidente di Commissione</p>
+                            <div class="border-b border-slate-400 w-3/4 mx-auto"></div>
+                            <p class="text-[9px] text-slate-400 mt-1.5">Timbro dell'Azienda Speciale e Firma</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById("interactive-app").style.display = "none";
+
+            try {
+                window.print();
+            } catch (e) {
+                console.warn("La chiamata diretta window.print() è stata bloccata. Usa la combinazione Ctrl+P o Cmd+P.");
+            }
+        }
+
+        // Ritorna all'interfaccia principale dell'applicazione
+        function closePrintPreview() {
+            document.getElementById("print-section").className = "";
+            document.getElementById("print-section").innerHTML = "";
+            document.getElementById("interactive-app").style.display = "block";
+        }
+
+        // Avvio dell'applicazione
+        window.onload = function() {
+            initializeData();
+        };
+    </script>
+</body>
+</html>
